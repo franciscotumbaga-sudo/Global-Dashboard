@@ -1,0 +1,280 @@
+<div id="app">
+  <canvas id="canvas"></canvas>
+</div>
+
+<div class="dashboard-container">
+    <div class="header-area">
+        <h2 class="neon-title">Global Dashboard</h2>
+    </div>
+
+    <div class="selector-box">
+        <span class="section-label">Select Workspace Tool</span>
+        <select id="masterSelector" class="tool-select" onchange="switchTool()">
+            <option value="wrap">📋 Wrap Code Generator</option>
+            <option value="comment">📝 Error Report - Comments</option>
+            <option value="rts">⚡ RTS Generator</option>
+            <option value="macro">✉️ Email Template (Macro)</option>
+        </select>
+    </div>
+
+    <div id="tool_wrap" class="tool-section active">
+        <span class="section-label">1. Search Wrap Category</span>
+        <div class="search-wrapper">
+            <input type="text" id="w_search" class="data-input" placeholder="Type issue (e.g. 'Refund', 'Late')..." autocomplete="off">
+            <div id="w_results" class="results-list"></div>
+        </div>
+
+        <div id="w_infoBox" class="info-box">
+            <strong style="display:block; margin-bottom:5px; color:#E0FFFF;">Definition:</strong>
+            <span id="w_defText"></span>
+        </div>
+
+        <div class="flex-row">
+            <div>
+                <span class="section-label">Wrap Code (Category)</span>
+                <input type="text" id="w_cat" class="data-input auto-save" readonly style="background-color: rgba(0,0,0,0.8); cursor: not-allowed;" placeholder="Auto-filled">
+            </div>
+            <div>
+                <span class="section-label">Keyword (Specific)</span>
+                <select id="w_key" class="data-input auto-save">
+                    <option value="">-- Select Code First --</option>
+                </select>
+            </div>
+        </div>
+
+        <span class="section-label">Issue</span>
+        <input type="text" id="w_issue" class="data-input auto-save" value="Customer reached out to ">
+
+        <span class="section-label">Resolution Actions</span>
+        <div class="turbo-container">
+            <span class="turbo-btn" onclick="addWrapRes('Advised the cx')">Advised CX</span>
+            <span class="turbo-btn" onclick="addWrapRes('Educated the cx on')">Educated CX</span>
+            <span class="turbo-btn" onclick="addWrapRes('Processed a refund for')">Refunded</span>
+            <span class="turbo-btn" onclick="addWrapRes('Added account credit of')">Added Credit</span>
+            <span class="turbo-btn" onclick="addWrapRes('Escalated to Tier 2')">Escalated</span>
+            <span class="turbo-btn" onclick="addWrapRes('Apologized for the inconvenience')">Apologized</span>
+        </div>
+        
+        <div class="flex-row">
+            <div style="flex: 0 0 140px;">
+                <select id="w_status" class="data-input auto-save">
+                    <option value="Resolved">✅ Resolved</option>
+                    <option value="Pending">⏳ Pending</option>
+                    <option value="Escalated">⚠️ Escalated</option>
+                    <option value="Unresolved">❌ Unresolved</option>
+                </select>
+            </div>
+            <div>
+                <input type="text" id="w_res" class="data-input auto-save" placeholder="Details of the fix...">
+            </div>
+        </div>
+
+        <span class="section-label">Other (Optional)</span>
+        <input type="text" id="w_other" class="data-input auto-save" placeholder="Leave blank if not needed...">
+
+        <span class="section-label">Final Wrap Up Note</span>
+        <textarea id="w_out" class="output-box" readonly style="height: 120px;"></textarea>
+
+        <button class="main-btn copy-btn" id="w_copy" onclick="copyToolOutput('w_out', 'w_copy')">COPY WRAP UP</button>
+        <div class="btn-group">
+            <button class="main-btn save-btn" onclick="saveHistory('w')">SAVE SESSION</button>
+            <button class="main-btn export-btn" onclick="exportHistory('w', 'Wrap_Codes')">EXPORT LOG</button>
+        </div>
+        
+        <div class="history-section">
+            <div class="history-header">
+                <span class="history-title">Wrap Up History</span>
+                <button class="clear-all-btn" onclick="clearHistory('w')">CLEAR CACHE</button>
+            </div>
+            <div id="w_log"></div>
+        </div>
+    </div>
+
+    <div id="tool_comment" class="tool-section">
+        <span class="section-label">Category</span>
+        <select id="c_type" class="data-input auto-save" onchange="updateCommentUI()">
+            <option value="tl_needed">TL Code Needed</option>
+            <option value="no_tl">Standard (No TL Needed)</option>
+            <option value="quality_missing">Quality / Missing Items</option>
+            <option value="cc_error">CC Error (Customer Care)</option>
+        </select>
+
+        <div id="c_box_email" class="hidden">
+            <span class="section-label">CC Email</span>
+            <input type="text" id="c_email" class="data-input auto-save" placeholder="agent@care.com">
+        </div>
+
+        <span class="section-label">Comments / Reason</span>
+        <input type="text" id="c_comm" class="data-input auto-save" placeholder="Explain the issue...">
+
+        <div id="c_box_recipe" class="hidden">
+            <span class="section-label">Recipe Number</span>
+            <input type="text" id="c_rec" class="data-input auto-save" placeholder="e.g. 2109">
+        </div>
+
+        <div class="flex-row">
+            <div id="c_box_tl">
+                <span class="section-label">TL Code</span>
+                <input type="text" id="c_tl" class="data-input auto-save" placeholder="e.g. AME-12345">
+            </div>
+            <div id="c_box_tltog" class="hidden">
+                <span class="section-label">TL Needed?</span>
+                <select id="c_tltog" class="data-input auto-save" onchange="generateComment()">
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="flex-row">
+            <div>
+                <span class="section-label">Comp. Type</span>
+                <select id="c_comp" class="data-input auto-save">
+                    <option value="Refund">Refund</option>
+                    <option value="Credit">Credit</option>
+                    <option value="Waive">Waive</option>
+                    <option value="N/A">None</option>
+                </select>
+            </div>
+            <div>
+                <span class="section-label">Amount</span>
+                <input type="text" id="c_amt" class="data-input auto-save" placeholder="0.00">
+            </div>
+        </div>
+
+        <span class="section-label">Comment Output</span>
+        <textarea id="c_out" class="output-box" readonly style="height: 100px;"></textarea>
+
+        <button class="main-btn copy-btn" id="c_copy" onclick="copyToolOutput('c_out', 'c_copy')">COPY COMMENT</button>
+        <div class="btn-group">
+            <button class="main-btn save-btn" onclick="saveHistory('c')">SAVE SESSION</button>
+            <button class="main-btn export-btn" onclick="exportHistory('c', 'Error_Comments')">EXPORT LOG</button>
+        </div>
+        
+        <div class="history-section">
+            <div class="history-header">
+                <span class="history-title">Comments History</span>
+                <button class="clear-all-btn" onclick="clearHistory('c')">CLEAR CACHE</button>
+            </div>
+            <div id="c_log"></div>
+        </div>
+    </div>
+
+    <div id="tool_rts" class="tool-section">
+        <div class="flex-row">
+            <div>
+                <span class="section-label">CID</span>
+                <input type="text" id="r_cid" class="data-input auto-save" placeholder="Customers ID">
+            </div>
+            <div>
+                <span class="section-label">SUB ID</span>
+                <input type="text" id="r_sub" class="data-input auto-save" placeholder="Subscriber ID">
+            </div>
+        </div>
+        
+        <div class="flex-row">
+            <div>
+                <span class="section-label">BOX ID</span>
+                <input type="text" id="r_box" class="data-input auto-save" placeholder="Box ID">
+            </div>
+            <div>
+                <span class="section-label">Loyalty</span>
+                <input type="text" id="r_loy" class="data-input auto-save" placeholder="Box Count">
+            </div>
+        </div>
+
+        <span class="section-label">Reason</span>
+        <input type="text" id="r_rea" class="data-input auto-save" placeholder="Why are they calling?">
+
+        <span class="section-label">Offer</span>
+        <input type="text" id="r_off" class="data-input auto-save" placeholder="Applied Offer">
+
+        <span class="section-label">RTS Output</span>
+        <textarea id="r_out" class="output-box" readonly style="height: 130px;"></textarea>
+
+        <button class="main-btn copy-btn" id="r_copy" onclick="copyToolOutput('r_out', 'r_copy')">COPY RTS DATA</button>
+        <div class="btn-group">
+            <button class="main-btn save-btn" onclick="saveHistory('r')">SAVE SESSION</button>
+            <button class="main-btn export-btn" onclick="exportHistory('r', 'RTS_Logs')">EXPORT LOG</button>
+        </div>
+        
+        <div class="history-section">
+            <div class="history-header">
+                <span class="history-title">RTS History</span>
+                <button class="clear-all-btn" onclick="clearHistory('r')">CLEAR CACHE</button>
+            </div>
+            <div id="r_log"></div>
+        </div>
+    </div>
+
+    <div id="tool_macro" class="tool-section">
+        <div class="flex-row">
+            <div>
+                <span class="section-label">Brand Format</span>
+                <select id="m_brand" class="data-input auto-save">
+                    <option value="hf_au">HelloFresh AU</option>
+                    <option value="hf_nz">HelloFresh NZ</option>
+                    <option value="ep_au">EveryPlate AU</option>
+                    <option value="yf_au">Youfoodz AU</option>
+                </select>
+            </div>
+            <div>
+                <span class="section-label">Resolution Type</span>
+                <select id="m_type" class="data-input auto-save" onchange="updateMacroUI()">
+                    <option value="custom">Custom Message (Manual)</option>
+                    <option value="invoice">Invoice Request (PDF)</option>
+                    <option value="refund">Refund Letter (PDF)</option>
+                    <option value="delivery">Delivery Status / Tracking</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="flex-row">
+            <div>
+                <span class="section-label">Greeting Style</span>
+                <select id="m_greet" class="data-input auto-save">
+                    <option value="g1">Standard: Hi Good day John...</option>
+                    <option value="g2">Update: I'm reaching out...</option>
+                    <option value="g3">Friendly: Hope you're having a great...</option>
+                </select>
+            </div>
+            <div>
+                <span class="section-label">Customer Name</span>
+                <input type="text" id="m_name" class="data-input auto-save" placeholder="e.g. John" autocomplete="off">
+            </div>
+        </div>
+
+        <span class="section-label">Customer Email</span>
+        <input type="text" id="m_email" class="data-input auto-save" placeholder="e.g. john@mail.com" autocomplete="off">
+
+        <div id="m_box_track" class="hidden" style="border: 1px dashed #00FFFF; padding: 15px; border-radius: 8px; margin-bottom: 20px; background: rgba(0,255,255,0.05);">
+            <span class="section-label" style="color: #00FFFF;">Paste Tracking Link Below</span>
+            <input type="text" id="m_track" class="data-input auto-save" placeholder="https://tracking.link/12345..." style="margin-bottom:0;">
+        </div>
+
+        <span class="section-label">Information / Body Content</span>
+        <textarea id="m_body" class="data-input auto-save" style="height: 80px; resize: vertical;" placeholder="Type specific details here..."></textarea>
+
+        <span class="section-label">Email Output Preview</span>
+        <textarea id="m_out" class="output-box" readonly style="height: 250px;"></textarea>
+        
+        <button class="main-btn copy-btn" id="m_copy" onclick="copyToolOutput('m_out', 'm_copy')">COPY EMAIL TEMPLATE</button>
+        <button class="main-btn export-btn" style="width:100%;" onclick="clearMacroForm()">CLEAR FORM / NEXT CUSTOMER</button>
+    </div>
+</div>
+
+<script type="module">
+  import TubesCursor from "https://cdn.jsdelivr.net/npm/threejs-components@0.0.19/build/cursors/tubes1.min.js";
+  const app = TubesCursor(document.getElementById('canvas'), {
+    tubes: { colors: ["#00FFFF", "#FF0055", "#6958d5"], lights: { intensity: 200, colors: ["#00FFFF", "#FF0055", "#ff008a", "#60aed5"] } }
+  });
+  document.getElementById('app').addEventListener('click', () => {
+    const colors = randomColors(3);
+    const lightsColors = randomColors(4);
+    app.tubes.setColors(colors);
+    app.tubes.setLightsColors(lightsColors);
+  });
+  function randomColors (count) {
+      return new Array(count).fill(0).map(() => "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0'))
+  }
+</script>
