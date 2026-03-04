@@ -1,0 +1,396 @@
+/* =========================================================
+   GLOBAL LOGIC: SELECTOR, AUTO-SAVE, COPY
+   ========================================================= */
+function switchTool() {
+    const selected = document.getElementById('masterSelector').value;
+    document.querySelectorAll('.tool-section').forEach(sec => sec.classList.remove('active'));
+    document.getElementById('tool_' + selected).classList.add('active');
+    localStorage.setItem('activeTool_v2', selected);
+}
+
+function initGlobal() {
+    // Load Tool
+    const savedTool = localStorage.getItem('activeTool_v2');
+    if (savedTool) {
+        document.getElementById('masterSelector').value = savedTool;
+        switchTool();
+    }
+
+    // Specific dropdown restoration for Wrap Code
+    const savedKeywordHtml = localStorage.getItem('draft_w_key_html_v2');
+    if (savedKeywordHtml) {
+        document.getElementById('w_key').innerHTML = savedKeywordHtml;
+    }
+
+    // Restore InfoBox visibility for Wrap Code
+    const savedDef = localStorage.getItem('draft_w_defText_v2');
+    if (savedDef) {
+        document.getElementById('w_defText').innerText = savedDef;
+        document.getElementById('w_infoBox').style.display = 'block';
+    }
+
+    // Load AutoSave Drafts & attach listeners
+    document.querySelectorAll('.auto-save').forEach(input => {
+        const savedValue = localStorage.getItem('draft_' + input.id + '_v2');
+        if (savedValue !== null) { input.value = savedValue; }
+        
+        input.addEventListener('input', () => {
+            localStorage.setItem('draft_' + input.id + '_v2', input.value);
+            triggerGen(input.id);
+        });
+        input.addEventListener('change', () => {
+            localStorage.setItem('draft_' + input.id + '_v2', input.value);
+            if(input.id === 'w_key') {
+                localStorage.setItem('draft_w_key_html_v2', document.getElementById('w_key').innerHTML);
+            }
+            triggerGen(input.id);
+        });
+    });
+
+    updateCommentUI();
+    updateMacroUI();
+
+    generateWrap(); displayHistory('w');
+    generateComment(); displayHistory('c');
+    generateRTS(); displayHistory('r');
+    generateMacro();
+}
+
+function triggerGen(id) {
+    if (id.startsWith('w_')) generateWrap();
+    if (id.startsWith('c_')) generateComment();
+    if (id.startsWith('r_')) generateRTS();
+    if (id.startsWith('m_')) generateMacro();
+}
+
+function clearDrafts(prefix) {
+    document.querySelectorAll('.auto-save').forEach(input => {
+        if (input.id.startsWith(prefix + '_')) {
+            localStorage.removeItem('draft_' + input.id + '_v2');
+            if(input.tagName !== 'SELECT' || input.id === 'w_cat' || input.id === 'w_key') {
+                input.value = ''; 
+            }
+        }
+    });
+
+    if(prefix === 'w') { 
+        document.getElementById('w_status').value = 'Resolved'; 
+        document.getElementById('w_issue').value = 'Customer reached out to '; 
+        document.getElementById('w_key').innerHTML = '<option value="">-- Select Code First --</option>';
+        document.getElementById('w_infoBox').style.display = 'none';
+        localStorage.removeItem('draft_w_key_html_v2');
+        localStorage.removeItem('draft_w_defText_v2');
+    }
+    if(prefix === 'c') { document.getElementById('c_type').value = 'tl_needed'; document.getElementById('c_comp').value = 'Refund'; document.getElementById('c_tltog').value = 'yes'; updateCommentUI(); }
+    triggerGen(prefix + '_');
+}
+
+async function copyToolOutput(sourceId, btnId) {
+    const area = document.getElementById(sourceId);
+    const btn = document.getElementById(btnId);
+    if (!area.value.trim()) return;
+
+    area.select();
+    try { await navigator.clipboard.writeText(area.value); } 
+    catch (err) { document.execCommand('copy'); }
+
+    const originalText = btn.innerText;
+    btn.innerText = "✓ COPIED!";
+    btn.style.background = "#fff";
+    btn.style.color = "#000";
+    setTimeout(() => { btn.innerText = originalText; btn.style.background = ""; btn.style.color = ""; }, 1000);
+}
+
+/* =========================================================
+   TOOL 1: WRAP CODE LOGIC
+   ========================================================= */
+const wrapDB = [
+    { title: "Any wrap-code", code: "Any wrap-code", definition: "All inquiries and concerns exclusive to the Youfoodz Support at Home (SaH) program.", keywords: ["Homecare + related keyword", "Support at Home + related keyword", "MyAgedCare + related keyword"] },
+    { title: "Account - 1st Box Change / Question", code: "Account - 1st Box Change / Question", definition: "Issues, questions, changes, and cancellation of the 1st box. Applied only if before cutoff.", keywords: ["Cancellation - first box", "CC Error", "Change Box type", "Change Meals", "Change Requests", "Christmas Box", "Manager Call Back / Escalation", "Update Delivery Address", "Update Delivery Day", "Unresponsive / Unresolved", "Previously resolved"] },
+    { title: "Account - After deadline change request", code: "Account - After deadline change request", definition: "Inquiries related to after-deadline/ cutoff changes or box pauses.", keywords: ["Address Change", "Box Type Change", "Cancellation Not Possible", "CC Error", "Deadline", "Delivery Instruction request", "Delivery Day/Window change", "LMC box only", "Manager Call Back / Escalation", "Meal Swap", "Unresponsive / Unresolved", "Previously resolved"] },
+    { title: "Account - Cancellation - Duplicated Subscription", code: "Account - Cancellation - Duplicated Subscription", definition: "Customer request cancellation of subscription due to a duplicate subscription", keywords: ["CC Error", "Duplicate account", "Duplicate cancellation", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved"] },
+    { title: "Account - Cancellation - Customer Not Retained", code: "Account - Cancellation - Customer Not Retained", definition: "The customer requested cancellation and the agent was not able to prevent it.", keywords: ["Cancellation - Can't afford", "Cancellation - Delivery issues", "Cancellation - didn't like meals", "Cancellation - time-consuming", "Cancellation - bad service", "Cancellation - Pick & Pack", "Cancellation - Quality", "Cancellation - Unaware of sub", "Cancellation - Sustainability", "Cancellation - Dietary", "Cancellation - Going Overseas", "Cancellation - Predeadline", "Cancellation - LMC + sub", "Cancellation - Medical/Health Issues", "Cancellation - Going Away", "Cancellation - No Reason Provided", "Cancellation - Death in the family", "Cancellation - Job Loss", "Cancellation - Incarceration", "Cancellation - Multiple Subscription", "Cancellation - Personal Reason", "Cross-sell to Youfoodz", "CC Error", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "Cancellation - Green Box"] },
+    { title: "Account - Cancellation - Retained Customer", code: "Account - Cancellation - Retained Customer", definition: "The customer requested subscription cancellation and the agent prevents the customer from canceling.", keywords: ["Retained - first box", "Retained - Can't afford", "Retained - Delivery issues", "Retained - didn't like meals", "Retained - time-consuming", "Retained - bad service", "Retained - Pick & Pack", "Retained - Quality", "Retained - Unaware of sub", "Retained - Sustainability", "Retained - Going Overseas", "Retained - Dietary", "Retained - LMC + sub", "Retained - Going Away", "Retained - Personal Reason", "Retained by CC", "CC Error", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "Retained - Green Box"] },
+    { title: "Account - Data Protection", code: "Account - Data Protection", definition: "Questions or requests related to data protection, such as deleting personal data.", keywords: ["Breached", "CC Error", "Data request", "Data Protection", "Deletion of data", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved"] },
+    { title: "Account - Meal Swap / Recipe Preference", code: "Account - Meal Swap / Recipe Preference", definition: "Inquiries about recipes and their dietary requirements, meal and add-ons swaps", keywords: ["Add on", "Customisation", "Dairy-free", "Gluten-free", "Ingredient Inquiry", "Low calorie", "Meal Selection / Menu / Recipes", "Meal Swap", "Modularity", "Nutritional Information", "Organic", "Pescatarian", "Plant-based", "Pork-free", "Preference", "Recipe Inquiry", "Seamless", "Vegan", "Veggie", "Adding Same meals", "Multiple Up", "Food Info", "Meat Alternative", "Halal", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "CC Error"] },
+    { title: "Account - Reactivation", code: "Account - Reactivation", definition: "Queries related to account reactivation", keywords: ["Reactivation", "Unresponsive / Unresolved", "Previously resolved", "CC Error"] },
+    { title: "Account - Skip/Unskip", code: "Account - Skip/Unskip", definition: "Pause/ unpause box requests. Applied before the deadline.", keywords: ["Pause", "Unpause", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "CC Error"] },
+    { title: "Account - Update account/subscription details", code: "Account - Update account/subscription details", definition: "Inquiries related to personal and subscription info changes before the deadline.", keywords: ["Account/Subscription Status", "Add Authorised Person", "Address", "Box Size", "Delivery Day", "Email Address update", "Password Reset", "Payment Change", "Phone number update", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "CC Error"] },
+    { title: "Account - Loyalty Program", code: "Account - Loyalty Program", definition: "The customer has questions or concerns about the free loyalty program", keywords: ["CC Error", "HelloFresh Rewards", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved"] },
+    { title: "Complaint - Food Safety", code: "Complaint - Food Safety", definition: "Food safety-related complaints such as allergic reaction, foreign objects, food poisoning.", keywords: ["Allergy", "Foreign object", "Food poisoning", "Food safety report", "Label", "Legal and Compliance", "No ice packs", "Nutrition", "Pest Contamination", "Poisoning", "Shelf life", "Sickness", "Warm", "Damaged", "CC Error", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "Green Box"] },
+    { title: "Complaint - Logistic - Courier company", code: "Complaint - Logistic - Courier company", definition: "Complaints due to property damaged by logistics, driver behavior, instructions not followed.", keywords: ["Driver Behaviour", "Property damage", "Instructions not followed", "Leave safe", "Damaged boxes", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "CC Error", "Green Box"] },
+    { title: "Complaint - Logistics- Early/Late", code: "Complaint - Logistics- Early/Late", definition: "Complaints due to delivery before or after the advised time slot.", keywords: ["Early/Late same day", "Early 1 Day", "Early 2 Day", "Late 1 Day", "Late 2 Day", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "CC Error"] },
+    { title: "Complaint - Logistics- Failed delivery", code: "Complaint - Logistics- Failed delivery", definition: "Complaints due to any causes resulting in no delivery", keywords: ["Failed delivery", "Non Customer Received Box", "No delivery", "Stolen", "GNR", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "CC Error"] },
+    { title: "Complaint - Pick & Pack (Missing)", code: "Complaint - Pick & Pack", definition: "Complaints related to pick and pack issues", keywords: ["CERT", "CC Error", "Free Add On For Life", "Hotwire", "Incorrect", "Substitution", "Missing", "Missing Recipe Card", "Wrong Portion/Size", "Recurring Missing (QC)", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved"] },
+    { title: "Complaint - Pick & Pack (Quality)", code: "Complaint - Pick & Pack", definition: "Complaints on ingredients quality and packaging issues.", keywords: ["CC Error", "CERT", "Damage", "Hotwire", "Ice Packs", "Leaking/ Spilled", "Mould", "Open", "Punctured/ Torn", "Rotten", "Seal open", "Shelf life inquiry", "Smelly", "Spoiled", "Substitution", "Wilted", "Recurring Quality Issue (QC)", "Poor value perception", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "Green Box"] },
+    { title: "Complaint - Website / App / Internal Tech Error", code: "Complaint - Website / App / Internal Tech Error", definition: "Complaints on the App/Website/Internal Technical issues including changes not applied, glitches.", keywords: ["Android", "App", "BOB", "Changes not applied", "Glitchy", "Internet", "iOS", "PureCloud", "Safari", "System outage", "Website", "Internal", "Appcookbook", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "CC Error"] },
+    { title: "Logistics - Delivery Status", code: "Logistics - Delivery Status", definition: "Inquiries related to delivery status and ETA requests.", keywords: ["ETA", "Delivery Status Check", "Tracking the box", "Send Tracking Link", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "CC Error"] },
+    { title: "Marketing - Applying Voucher / Gift Card", code: "Marketing - Applying Voucher / Gift Card", definition: "Inquiries concerning vouchers and codes such as expired or not applied.", keywords: ["Applied", "CC Error", "Expired", "Gift Card", "Manually Applied Code", "Not Applied", "Not Eligible", "Reactivation Code", "Refunded Voucher", "Replaced Code", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved"] },
+    { title: "Marketing - Communication", code: "Marketing - Communication", definition: "Inquiries related to comms about marketing offers, unsubscribing, partnerships.", keywords: ["3rd party", "Affiliate", "Conditions", "Discount", "Gift card", "HCF", "Multilevel", "Not received/Loyalty Reward", "Notification", "Preferences", "Promotion education", "Qantas", "Terms", "Unclear", "Unsubscribe", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "CC Error"] },
+    { title: "Marketing - Direct Sales", code: "Marketing - Direct Sales and Reactivation team", definition: "Issues related to direct sales agents, door to door, outbound call center.", keywords: ["Direct sales", "OB Reactivation", "Lead Gen", "Behaviour", "Late knocking", "Misinformation", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "CC Error"] },
+    { title: "Marketing - Referral", code: "Marketing - Referral", definition: "Any referral issues including policy, referral credit, Helloshare code.", keywords: ["Existing customer", "Freebie", "HelloShare", "New customer", "Recipient", "Referral credit", "Referral credit not received", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "CC Error"] },
+    { title: "Marketing - Voucher Fraud", code: "Marketing - Voucher Fraud", definition: "Any voucher fraud interactions due to mis-use of voucher, freebie fraud, multiple accounts.", keywords: ["Exception", "Honoured", "Not honoured", "Freebie Fraud", "Previous tenant", "Freebie Fraud Cancellation", "Compensation Fraud Policy", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "CC Error"] },
+    { title: "Other - Connection Issue", code: "Other - Connection Issue", definition: "Connection issues experienced by CC agents i.e. customer can't see the agents' answers, calls disconnected.", keywords: ["Connection Issue", "Customer Unresponsive", "Disconnected", "CC Error"] },
+    { title: "Other - Non- customer query", code: "Other - Non- customer query", definition: "Any non-customer interactions, requests for POCs, spam.", keywords: ["Event", "POC Request", "Passed On Details", "General Inquiry", "IG Stories", "Spam", "Food Info", "Meat Alternative", "Halal", "NDIS", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "CC Error"] },
+    { title: "Other - Sustainability / Sourcing", code: "Other - Sustainability / Sourcing", definition: "Inquiries about resources, suppliers, alternatives, recycling, ice packs", keywords: ["Compost", "Free range", "Ice pack disposal", "Packaging", "Plastic", "Recycling", "Supplier Inquiry", "Waste", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "CC Error", "Green Box"] },
+    { title: "Other - Voicemail / No Answer", code: "Other - Voicemail / No Answer", definition: "Reached voicemail or customer did not pick up the phone. (MCB/Escalation calls).", keywords: ["No Answer", "Voicemail", "CC Error"] },
+    { title: "Payments - Charge breakdown", code: "Payments - Charge breakdown", definition: "Questions regarding the breakdown of the invoice, add-ons, or surcharges.", keywords: ["Invoice", "Add-on", "Charge", "Breakdown", "Confirmed payment", "Delivery fee", "Double Charge", "Extras", "Fresh & Fast", "Gourmet", "Incorrect charge", "Premium", "Region fee", "Standard shipping", "Unauthorized Charge", "Surcharge", "Box Price", "Price", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "CC Error"] },
+    { title: "Payments - Credit/ Refund", code: "Payments - Credit/ Refund", definition: "Inquiries on credit/refund", keywords: ["Credit", "Refund", "Top-Up", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "CC Error"] },
+    { title: "Payments - Outstanding/ Dunning", code: "Payments- Outstanding/ Dunning", definition: "Outstanding payment, failed payment, debt collections.", keywords: ["Chargeback", "Debt collection", "Extension", "Failed payment", "Insufficient Funds", "Outstanding balance", "Overpaid", "Payment method", "Proof of payment", "Payments schedule", "Waive", "Dunning", "Manager Call Back / Escalation", "Unresponsive / Unresolved", "Previously resolved", "CC Error"] }
+];
+
+document.getElementById('w_search').addEventListener('input', function() {
+    const term = this.value.toLowerCase().trim();
+    const resList = document.getElementById('w_results');
+    resList.innerHTML = '';
+    if(term.length < 1) { resList.style.display = 'none'; return; }
+
+    const matches = wrapDB.filter(item => 
+        item.title.toLowerCase().includes(term) || 
+        item.code.toLowerCase().includes(term) ||
+        item.keywords.some(k => k.toLowerCase().includes(term))
+    );
+
+    if (matches.length > 0) {
+        resList.style.display = 'block';
+        matches.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'result-item';
+            div.innerHTML = `<strong>${item.title}</strong><span class="result-snippet">${item.code}</span>`;
+            div.onclick = () => selectWrap(item);
+            resList.appendChild(div);
+        });
+    } else { resList.style.display = 'none'; }
+});
+
+function selectWrap(item) {
+    const cat = document.getElementById('w_cat');
+    const keySel = document.getElementById('w_key');
+    
+    cat.value = item.code;
+    localStorage.setItem('draft_w_cat_v2', cat.value); 
+
+    document.getElementById('w_infoBox').style.display = 'block';
+    document.getElementById('w_defText').innerText = item.definition;
+    localStorage.setItem('draft_w_defText_v2', item.definition);
+    
+    keySel.innerHTML = '<option value="">-- Select Specific Keyword --</option>';
+    item.keywords.forEach(k => {
+        const opt = document.createElement('option');
+        opt.value = k; opt.innerText = k; keySel.appendChild(opt);
+    });
+    
+    localStorage.setItem('draft_w_key_html_v2', keySel.innerHTML);
+    localStorage.setItem('draft_w_key_v2', '');
+
+    document.getElementById('w_results').style.display = 'none';
+    document.getElementById('w_search').value = '';
+    generateWrap();
+}
+
+function addWrapRes(text) {
+    const res = document.getElementById('w_res');
+    res.value = res.value ? res.value + " " + text : text;
+    localStorage.setItem('draft_w_res_v2', res.value);
+    generateWrap();
+}
+
+/* --- THE UPDATED WRAP GENERATOR (REMOVED WRAP CODE COMPLETELY) --- */
+function generateWrap() {
+    const key = document.getElementById('w_key').value || "[No Keyword Selected]";
+    const iss = document.getElementById('w_issue').value;
+    const res = document.getElementById('w_res').value;
+    const stat = document.getElementById('w_status').value;
+    const oth = document.getElementById('w_other').value;
+
+    let resStr = res ? `[${stat}] ${res}` : `[${stat}]`;
+    
+    // Notice how 'Wrap Code: ...' is completely gone now!
+    let final = `Keyword: ${key}\nIssue: ${iss}\nResolution: ${resStr}`;
+    
+    if (oth.trim() !== "") { 
+        final += `\nOther: ${oth}`; 
+    }
+    
+    document.getElementById('w_out').value = final;
+}
+
+/* =========================================================
+   TOOL 2: COMMENT LOGIC
+   ========================================================= */
+function updateCommentUI() {
+    const val = document.getElementById('c_type').value;
+    document.getElementById('c_box_email').classList.toggle('hidden', val !== 'cc_error');
+    document.getElementById('c_box_recipe').classList.toggle('hidden', val !== 'quality_missing');
+    document.getElementById('c_box_tl').classList.toggle('hidden', val === 'no_tl');
+    document.getElementById('c_box_tltog').classList.toggle('hidden', val !== 'quality_missing');
+    generateComment();
+}
+
+function generateComment() {
+    const val = document.getElementById('c_type').value;
+    const comm = document.getElementById('c_comm').value.trim();
+    const amt = document.getElementById('c_amt').value.trim();
+    const cType = document.getElementById('c_comp').value;
+    const tl = document.getElementById('c_tl').value.trim();
+    const rec = document.getElementById('c_rec').value.trim();
+    const email = document.getElementById('c_email').value.trim();
+    const tlNeed = document.getElementById('c_tltog').value;
+
+    const compPart = (amt && cType !== 'N/A') ? `${cType} $${amt}` : '';
+    const tlPart = (tl && (val !== 'no_tl' && (val !== 'quality_missing' || tlNeed === 'yes'))) ? `TL: ${tl}` : '';
+    const recPart = (val === 'quality_missing' && rec) ? `R#${rec}` : '';
+    const emailPart = (val === 'cc_error' && email) ? `CC: ${email}` : '';
+
+    document.getElementById('c_out').value = [emailPart, comm, recPart, tlPart, compPart].filter(Boolean).join(" | ");
+}
+
+/* =========================================================
+   TOOL 3: RTS LOGIC
+   ========================================================= */
+function generateRTS() {
+    const cid = document.getElementById('r_cid').value;
+    const sub = document.getElementById('r_sub').value;
+    const box = document.getElementById('r_box').value;
+    const loy = document.getElementById('r_loy').value;
+    const rea = document.getElementById('r_rea').value;
+    const off = document.getElementById('r_off').value;
+    document.getElementById('r_out').value = `CID: ${cid}\nSUB ID: ${sub}\nBOX ID: ${box}\nLoyalty: ${loy}\nReason: ${rea}\nOffer: ${off}`;
+}
+
+/* =========================================================
+   TOOL 4: MACRO LOGIC
+   ========================================================= */
+function updateMacroUI() {
+    const type = document.getElementById('m_type').value;
+    const trackBox = document.getElementById('m_box_track');
+    const bodyField = document.getElementById('m_body');
+
+    if (type === 'delivery') { trackBox.classList.remove('hidden'); } 
+    else { trackBox.classList.add('hidden'); }
+
+    const currentBody = bodyField.value;
+    const defaults = [
+        "As requested, please find the PDF copy of your invoice attached to this email for your records.",
+        "We have processed your request. Please find your official Refund Letter attached as a PDF for your reference.",
+        "I'm happy to provide you with the latest update on your box! You can track the real-time progress of your delivery using the link provided below:",
+        ""
+    ];
+
+    if(defaults.includes(currentBody)) {
+        if (type === 'invoice') bodyField.value = defaults[0];
+        else if (type === 'refund') bodyField.value = defaults[1];
+        else if (type === 'delivery') bodyField.value = defaults[2];
+        else bodyField.value = "";
+        localStorage.setItem('draft_m_body_v2', bodyField.value);
+    }
+    generateMacro();
+}
+
+function generateMacro() {
+    const brand = document.getElementById('m_brand').value;
+    const greetType = document.getElementById('m_greet').value;
+    const resType = document.getElementById('m_type').value;
+    const email = document.getElementById('m_email').value || "[Customer Email]";
+    const name = document.getElementById('m_name').value || "[Customer Name]";
+    const trackLink = document.getElementById('m_track').value || "[Insert Link]";
+    let body = document.getElementById('m_body').value || "[Insert details]";
+    
+    if (resType === 'delivery') { body = body + "\n\n📦 Tracking Link: " + trackLink; }
+
+    const greetings = {
+        g1: `Hi Good day ${name}, hope you are doing well.`,
+        g2: `Hi ${name}, I am reaching out to you today to provide an update regarding your account.`,
+        g3: `Hi ${name}, I hope you are having a great day so far.`
+    };
+
+    const brands = {
+        hf_au: { f: `📞 Phone: (02) 8188 8722\n💬 Live Chat: hellofresh.com.au\n📩 FB DM: fb.com/msg/hellofreshau`, s: `Thank you for choosing HelloFresh.\n\nWarm regards,\nThe HelloFresh Team`},
+        hf_nz: { f: `📞 Phone - (09) 886 9589\n💻 Live chat - hellofresh.co.nz\n💬 FB DM - fb.com/msg/hellofreshnz`, s: `Thank you for choosing HelloFresh.\n\nWarm regards,\nThe HelloFresh Team`},
+        ep_au: { f: `📞 Phone: (02) 4063 1042\n💬 Live Chat: everyplate.com.au\n📩 FB: EveryPlate AU`, s: `Happy Cooking!\nEveryPlate Team`},
+        yf_au: { f: `📞 Phone: (07) 3633 0708\n💬 Live Chat: www.youfoodz.com\n📩 FB DM: fb.com/msg/youfoodz`, s: `Thank you for choosing Youfoodz.\n\nWarm regards,\nThe Youfoodz Team`}
+    };
+
+    const b = brands[brand];
+    const d = `Please note, this email inbox is not monitored, so kindly reach out through the channels mentioned above for any queries or support.`;
+    const footer = `For any additional inquiries, please don't hesitate to contact us via one of the following channels:\n\n${b.f}`;
+    
+    document.getElementById('m_out').value = `Need help sending to: ${email}\n\n${greetings[greetType]}\n\n${body}\n\n${footer}\n\n${b.s}\n\n${d}`;
+}
+
+function clearMacroForm() {
+    clearDrafts('m');
+    document.getElementById('m_type').value = 'custom';
+    updateMacroUI();
+}
+
+/* =========================================================
+   GLOBAL HISTORY LOGIC (Wrap, Comment, RTS)
+   ========================================================= */
+function getHistoryKey(prefix) {
+    if(prefix === 'w') return 'hist_wrap_v2';
+    if(prefix === 'c') return 'hist_comm_v2';
+    if(prefix === 'r') return 'hist_rts_v2';
+}
+
+function saveHistory(prefix) {
+    const out = document.getElementById(prefix + '_out').value;
+    if (!out.trim()) return;
+    
+    const key = getHistoryKey(prefix);
+    const history = JSON.parse(localStorage.getItem(key) || '[]');
+    history.unshift({ id: Date.now(), time: new Date().toLocaleString(), text: out });
+    if(history.length > 30) history.pop();
+    
+    localStorage.setItem(key, JSON.stringify(history));
+    displayHistory(prefix);
+    clearDrafts(prefix); 
+}
+
+function displayHistory(prefix) {
+    const history = JSON.parse(localStorage.getItem(getHistoryKey(prefix)) || '[]');
+    const log = document.getElementById(prefix + '_log');
+    log.innerHTML = history.length === 0 ? '<p style="font-size:11px; color:#888; text-align:center;">Log empty.</p>' : '';
+    
+    history.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'history-item';
+        div.innerHTML = `<span class="del-btn" onclick="delHist('${prefix}', ${item.id})">×</span><div class="timestamp">${item.time}</div><div>${item.text}</div>`;
+        log.appendChild(div);
+    });
+}
+
+function delHist(prefix, id) {
+    const key = getHistoryKey(prefix);
+    let history = JSON.parse(localStorage.getItem(key) || '[]');
+    history = history.filter(i => i.id !== id);
+    localStorage.setItem(key, JSON.stringify(history));
+    displayHistory(prefix);
+}
+
+function clearHistory(prefix) {
+    if(confirm("Clear this entire log?")) {
+        localStorage.removeItem(getHistoryKey(prefix));
+        displayHistory(prefix);
+    }
+}
+
+function exportHistory(prefix, name) {
+    const history = JSON.parse(localStorage.getItem(getHistoryKey(prefix)) || '[]');
+    if (!history.length) return alert("History is empty!");
+    let content = `${name.toUpperCase()} LOG\n======================\n\n`;
+    history.forEach(item => content += `[${item.time}]\n${item.text}\n---\n\n`);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([content], { type: 'text/plain' }));
+    a.download = `${name}_${new Date().toISOString().slice(0,10)}.txt`;
+    a.click();
+}
+
+document.addEventListener('click', (e) => {
+    const sw = document.getElementById('w_search');
+    const rl = document.getElementById('w_results');
+    if (sw && rl && !sw.contains(e.target) && !rl.contains(e.target)) { rl.style.display = 'none'; }
+});
+
+// Run startup
+document.addEventListener('DOMContentLoaded', initGlobal);
